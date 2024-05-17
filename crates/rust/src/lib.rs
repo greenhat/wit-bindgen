@@ -1,5 +1,6 @@
 use crate::interface::InterfaceGenerator;
 use anyhow::{bail, Result};
+use core::panic;
 use heck::*;
 use indexmap::IndexSet;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -10,8 +11,8 @@ use std::process::{Command, Stdio};
 use std::str::FromStr;
 use wit_bindgen_core::abi::{Bitcast, WasmType};
 use wit_bindgen_core::{
-    name_package_module, uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _, Source,
-    Types, WorldGenerator,
+    dealias, name_package_module, uwrite, uwriteln, wit_parser::*, Files, InterfaceGenerator as _,
+    Source, Types, WorldGenerator,
 };
 
 mod bindgen;
@@ -152,7 +153,7 @@ pub struct Opts {
     #[cfg_attr(feature = "clap", arg(long = "additional_derive_attribute", short = 'd', default_values_t = Vec::<String>::new()))]
     pub additional_derive_attributes: Vec<String>,
 
-    /// Remapping of interface names to rust module names.
+    /// Remapping of interface names to rust module names and/or types to Rust types.
     ///
     /// Argument must be of the form `k=v` and this option can be passed
     /// multiple times or one option can be comma separated, for example
@@ -837,6 +838,16 @@ impl WorldGenerator for RustWasm {
         id: InterfaceId,
         _files: &mut Files,
     ) {
+        let mut to_define = Vec::new();
+        for (name, ty_id) in resolve.interfaces[id].types.iter() {
+            let full_name = full_wit_type_name(resolve, *ty_id);
+            if self.with.contains_key(&full_name) {
+                self.used_with_opts.insert(full_name);
+            } else {
+                to_define.push((name, ty_id))
+            }
+        }
+
         self.interface_last_seen_as_import.insert(id, true);
         let wasm_import_module = resolve.name_world_key(name);
         let mut gen = self.interface(
@@ -849,7 +860,10 @@ impl WorldGenerator for RustWasm {
         if gen.gen.name_interface(resolve, id, name, false) {
             return;
         }
-        gen.types(id);
+
+        for (name, ty_id) in to_define {
+            gen.define_type(&name, *ty_id);
+        }
 
         gen.generate_imports(resolve.interfaces[id].functions.values());
 
@@ -880,13 +894,27 @@ impl WorldGenerator for RustWasm {
         id: InterfaceId,
         _files: &mut Files,
     ) -> Result<()> {
+        let mut to_define = Vec::new();
+        for (name, ty_id) in resolve.interfaces[id].types.iter() {
+            let full_name = full_wit_type_name(resolve, *ty_id);
+            if self.with.contains_key(&full_name) {
+                self.used_with_opts.insert(full_name);
+            } else {
+                to_define.push((name, ty_id))
+            }
+        }
+
         self.interface_last_seen_as_import.insert(id, false);
         let mut gen = self.interface(Identifier::Interface(id, name), None, resolve, false);
         let (snake, module_path) = gen.start_append_submodule(name);
         if gen.gen.name_interface(resolve, id, name, true) {
             return Ok(());
         }
-        gen.types(id);
+
+        for (name, ty_id) in to_define {
+            gen.define_type(&name, *ty_id);
+        }
+
         let macro_name =
             gen.generate_exports(Some((id, name)), resolve.interfaces[id].functions.values())?;
         gen.finish_append_submodule(&snake, module_path);
@@ -932,8 +960,17 @@ impl WorldGenerator for RustWasm {
         types: &[(&str, TypeId)],
         _files: &mut Files,
     ) {
+        let mut to_define = Vec::new();
+        for (name, ty_id) in types {
+            let full_name = full_wit_type_name(resolve, *ty_id);
+            if self.with.contains_key(&full_name) {
+                self.used_with_opts.insert(full_name);
+            } else {
+                to_define.push((name, ty_id))
+            }
+        }
         let mut gen = self.interface(Identifier::World(world), Some("$root"), resolve, true);
-        for (name, ty) in types {
+        for (name, ty) in to_define {
             gen.define_type(name, *ty);
         }
         let src = gen.finish();
@@ -1357,5 +1394,20 @@ impl fmt::Display for RustFlagsRepr {
             RustFlagsRepr::U64 => "u64".fmt(f),
             RustFlagsRepr::U128 => "u128".fmt(f),
         }
+    }
+}
+
+/// Returns the full WIT type name with fully qualified interface name
+fn full_wit_type_name(resolve: &Resolve, id: TypeId) -> String {
+    let id = dealias(resolve, id);
+    let type_def = &resolve.types[id];
+    let interface_name = match type_def.owner {
+        TypeOwner::World(w) => Some(resolve.worlds[w].name.clone()),
+        TypeOwner::Interface(id) => resolve.id_of(id),
+        TypeOwner::None => None,
+    };
+    match interface_name {
+        Some(interface_name) => format!("{}/{}", interface_name, type_def.name.clone().unwrap()),
+        None => type_def.name.clone().unwrap(),
     }
 }

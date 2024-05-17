@@ -1,7 +1,7 @@
 use crate::bindgen::FunctionBindgen;
 use crate::{
-    int_repr, to_rust_ident, to_upper_camel_case, wasm_type, FnSig, Identifier, InterfaceName,
-    Ownership, RuntimeItem, RustFlagsRepr, RustWasm,
+    full_wit_type_name, int_repr, to_rust_ident, to_upper_camel_case, wasm_type, FnSig, Identifier,
+    InterfaceName, Ownership, RuntimeItem, RustFlagsRepr, RustWasm,
 };
 use anyhow::Result;
 use heck::*;
@@ -1138,14 +1138,21 @@ macro_rules! {macro_name} {{
     }
 
     pub fn type_path(&self, id: TypeId, owned: bool) -> String {
-        self.type_path_with_name(
-            id,
-            if owned {
-                self.result_name(id)
-            } else {
-                self.param_name(id)
-            },
-        )
+        let full_wit_type_name = full_wit_type_name(self.resolve, id);
+        if let Some(remapped_path) = self.gen.with.get(&full_wit_type_name) {
+            let mut path_to_root = self.path_to_root();
+            path_to_root.push_str(remapped_path);
+            path_to_root
+        } else {
+            self.type_path_with_name(
+                id,
+                if owned {
+                    self.result_name(id)
+                } else {
+                    self.param_name(id)
+                },
+            )
+        }
     }
 
     fn type_path_with_name(&self, id: TypeId, name: String) -> String {

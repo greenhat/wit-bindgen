@@ -674,19 +674,25 @@
 ///     // has generated bindings for all WASI types and structures. In this
 ///     // situation the key `with` here can be used to use those types
 ///     // elsewhere rather than regenerating types.
+///     // If for example your world refers to some type and you want to use
+///     // your own custom implementation of that type then you can specify
+///     // that here as well. There is a requirement on the remapped (custom)
+///     // type to have the same internal structure and identical to what would
+///     // wit-bindgen generate (including alignment, etc.), since
+///     // lifting/lowering uses its fields directly.
 ///     //
-///     // The `with` key here only works for interfaces referred to by imported
-///     // functions. Additionally it only supports replacing types at the
-///     // interface level at this time.
+///     // The `with` key here works for interfaces and individual types.
 ///     //
-///     // When an interface is specified here no bindings will be generated at
-///     // all. It's assumed bindings are fully generated upstream. This is an
-///     // indicator that any further references to types defined in these
-///     // interfaces should use the upstream paths specified here instead.
+///     // When an interface or type is specified here no bindings will be
+///     // generated at all. It's assumed bindings are fully generated
+///     // upstream. This is an indicator that any further references to types
+///     // defined in these interfaces should use the upstream paths specified
+///     // here instead.
 ///     //
 ///     // Any unused keys in this map are considered an error.
 ///     with: {
 ///         "wasi:io/poll": wasi::io::poll,
+///         "my:package/foo/my-type": types::MyType,
 ///     },
 ///
 ///     // An optional list of function names to skip generating bindings for.
