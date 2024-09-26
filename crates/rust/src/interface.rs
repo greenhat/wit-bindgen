@@ -1151,9 +1151,11 @@ macro_rules! {macro_name} {{
     pub fn type_path(&self, id: TypeId, owned: bool) -> String {
         let full_wit_type_name = full_wit_type_name(self.resolve, id);
         if let Some(TypeGeneration::Remap(remapped_path)) = self.gen.with.get(&full_wit_type_name) {
-            let mut path_to_root = self.path_to_root();
-            path_to_root.push_str(remapped_path);
-            path_to_root
+            // let mut path_to_root = self.path_to_root();
+            // path_to_root.push_str(remapped_path);
+            // path_to_root
+            // TODO: do it via `__wit_name` type alias?
+            remapped_path.clone()
         } else {
             self.type_path_with_name(
                 id,
